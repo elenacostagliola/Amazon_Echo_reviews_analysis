@@ -1,6 +1,6 @@
 ---
 title: "Amazon Echo reviews analysis"
-author: "Elena Costagliola [211506]"
+author: "Elena Costagliola"
 date: "12/07/2021"
 geometry: "left=1.5cm,right=1.5cm,top=2cm,bottom=2cm"
 urlcolor: blue
