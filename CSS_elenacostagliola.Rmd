@@ -1,0 +1,440 @@
+---
+title: "Amazon Echo reviews analysis"
+author: "Elena Costagliola [211506]"
+date: "12/07/2021"
+geometry: "left=1.5cm,right=1.5cm,top=2cm,bottom=2cm"
+urlcolor: blue
+output:
+  bookdown::pdf_document2: 
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 3.5
+    fig_width: 6
+    highlight: default
+    number_sections: yes
+    toc: no
+    toc_depth: 2
+  bookdown::html_document2: default
+header-includes: 
+- \usepackage{graphicx}
+- \usepackage{float}
+- \usepackage{setspace}
+- \doublespacing
+
+
+---
+
+```{r global options, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, echo=TRUE)
+```
+
+
+# Introduction
+
+The last decades have been characterized by an exponential technological progress impacting not only on people’s way of living but also on how people interact and communicate. Everything has become over-personalized, from advertisement to the way our devices interact with us and vice versa. Until a few decades ago, people watched films like Star Wars, imagining that human-robot interaction was just a figment of their imagination. Today’s world is far cry from the one depicted by G. Lucas, but especially for the youngest generation it is now natural to rely on virtual assistants to manage their routines, from answering simple tasks to controlling the home smartly by interconnecting more and more devices. 
+While this kind of advancement started with virtual assistants on mobiles, in 2014 Amazon proposed Alexa, the first virtual assistant integrated into a smart speaker.
+This report, based on the reviews left on the Amazon Shop after the purchase of Amazon Echo devices, explores the uses and criticisms of customers and leads us to understand how these devices have changed their habits and, consequently, what features were most appreciated for each model.
+In the first part an explorative analysis on ratings and the models' purchased has been conducted, then opinion mining tools have been used to highlight what Alexa is used for and what is the perception the users have about it.
+
+
+# General Framework
+
+This story has its roots in the 1950s, with Alan Turing's paper "Computing Machinery and Intelligence". From that moment on, humans began to imagine the world as a place of interaction between man and machine, and traces of these dreams can be found in the cinema as well as in the literature, but also in the technological advancements of that time. 
+Today we talk about the *Internet of Things* and *smart environment*, which include smart manufacturing, smart cities and smart homes. 
+Therefore, it is no longer a dream to be able to tell your smart device to turn the light on, or even to have your coffee ready in the morning.  
+
+This is made possible by virtual assistants (VA), that is software services that process user's textual, visual or vocal inputs, identify its meaning and respond to the command.
+
+The first VA released on the market was Siri by Apple in 2011, followed by Google Now by Google and Cortana by Microsoft. They were all mobile or PC integrated.
+
+Amazon was the first to integrate its virtual assistant Alexa into a smart speaker: Amazon Echo. Released in 2014, Echo is a hub for potentially all the houses' devices. It connects with its owner's Amazon account and from year to year it responds to more and more needs and with increased effectiveness. 
+Today the smart speaker market is significantly growing as many companies are investing in this field, but Amazon Echo is still one of the most purchased products with 70% of the market share (ReaserchandMarkets, 2021). Indeed, the Echo line has grown as well: it proposes a wide range of smart speakers responding to different needs. 
+However, like any product that achieves high popularity in a relatively short time, issues about how reliable it is have emerged both in public discussion and as subject of articles. 
+Indeed, the voice is listened by Alexa and converted to text through Automatic Speech Recognition Alexa system; both the recorded voice and text format are saved in cloud and then sent to Natural Language Understanding system to perform sintax, semantic and pragmatic analyses. These processes respectively understand the structure, the words' meaning and the context of the question. At this point, information to answer the question are retrieved in text format from multiple sources. The user, indeed, adds the so-called skills to its device, that is applications developed by third-parties' companies and Amazon itself, which provides different services.
+This mechanism, which is common to many of the smart speakers on the market, has raised concerns among consumers about privacy issues. Over the years, several rumors have emerged about who has access to Alexa's recordings and how the device is constantly listening in on household conversations. Despite this, however, the market does not seem to be slowing down its growth and is expected to reach $17.85 billion in 2025 at a compound annual growth rate (CAGR) of 26% (ReaserchandMarkets, 2021).
+
+Two research questions emerge from these considerations:
+
+ * What are the Amazon Echo products used for?
+ * What is the customers' perception of Amazon Echo? Are they concerned about their privacy?
+
+# Methodology
+
+This analysis has been conducted using RStudio, an Integrated Development Environment for R, one of the most used programming languages for statistical computing and graphics. R indeed provides many libraries aimed to conduct data manipulation, visualization and opinion mining, pivotal for the purposes of this analysis. The libraries used are listed below, roughly distinguishing their use:
+
+```{r Libraries}
+# Data Manipulation and Visualization
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# Opinion mining
+library(quanteda)
+library(quanteda.textstats)
+library(quanteda.textplots)
+library(textstem)
+library(tidytext)
+library(topicmodels)
+library(tibble)
+```
+
+
+## The Dataset
+
+In order to answer the research questions, reviews of Amazon customers will be analysed. [Source's dataset](https://www.kaggle.com/sid321axn/amazon-alexa-reviews/activity) did not specify how data were collected, but they have presumably been extracted from `amazon.com` and refer to USA Amazon Echo buyers.
+Reviews from Amazon, indeed, can be extracted either through web scraping or by using third-party Application Programs Interfaces (APIs). The two methods interact with Amazon’s contents allowing their extraction, but the first option may be subject to legal issues. On the one hand, indeed, the General Data Protection Regulation (GDPR) imposes limits on the processing of personal data, which means that after scraping the page, reviews authors must be anonymised. On the other hand, according to Amazon's conditions of use, a written consent of Amazon must be obtained before data extraction. 
+
+However, data have been read in R specifying enconding, columns' name and substituting empty slots with `NA`. 
+
+```{r Read data}
+df <- read.csv("amazon_alexa.tsv", sep='\t', encoding="UTF-8", na.strings=c(" ","NA"),
+               col.names=c("product_rating", "review_date", "product_variation", 
+                             "review_text", "feedback"))
+```
+
+The dataset contains `r nrow(df)` rows, each corresponding to each customer's:
+
+ * *Star rating* ranging from 1 to 5 and referred to the purchased product,
+ * *Date of review's publication*,
+ * *Model* of the product purchased within the Amazon Echo line,
+ * *Review's text*, and
+ * *Feedback*.
+
+The summary below shows that appropriate data types have to be set to the attributes.
+
+```{r echo=FALSE}
+summary(df)
+```
+
+## Data Cleaning
+
+In this section data will be cleaned in order to be used for the analysis using the grammar `dplyr` alongside the library `tidyr`, specific to tidy messy data.
+To start, the attribute `feedback` has been removed as no variable description was available. Moreover, this dataset contains `r round(sum(is.na(df$review_text)/nrow(df))*100, 1)`% of missing values only in the attribute `review_text`. Since no imputation is applicable to this attribute, those observations can be safely dropped by losing only `r sum(is.na(df$review_text))`.
+The attributes `product_variation` and `product_rating` have been converted into factors to better identify their levels and the `review_date` has been converted into date format.
+
+```{r Data preprocessing}
+df <- df %>% 
+  select(-feedback) %>%                                            # remove feedback column
+  drop_na() %>%                                                    # remove NAs' rows
+  mutate_at(vars(product_variation, product_rating),               # set data types 
+            list(~factor(.))) %>%                                                       
+  mutate(review_date=as.Date(review_date, format="%d-%b-%y"))
+```
+
+It has also been noted that the attribute referred to Amazon Echo variations contains `r nlevels(df$product_variation)`, but two of them, specifically `Black` and `White` are ambiguous: only the color is specified, omitting the model. Reading some of their reviews, it emerged that these levels refer to the Echo Dot model, so those levels have been renamed. In addition, the one referred to the product `Fire TV Stick` has been renamed with a more appropriated name too.
+
+```{r}
+df <- df %>% mutate(product_variation=recode(product_variation, 
+                                                  "White"="White  Dot", "Black"="Black  Dot", 
+                                                  "Configuration: Fire TV Stick"="Fire TV Stick"))
+```
+
+After these manipulations, the dataset consists of `r nrow(df)` rows and `r ncol(df)` columns. 
+
+
+## Data Exploration
+
+As mentioned above, the dataset contains the reviews of `r nrow(df)` Amazon Echo buyers. From the summary below it emerges that the reviews refer only to the period May-July 2018 and that more than twice of the customers gave a 5 rating to their Echo. 
+
+```{r}
+summary(df)
+```
+
+As shown in Figure \@ref(fig:perc-reviews), most of the reviews are concentrated at the end of July, probably due to the fact that in 2018 Amazon set the so-called Prime days, i.e. a discount period lasting from 16 to 17 July. Moreover, Amazon usually sends an email notification to the customer a few weeks after the purchase, asking them to publish the evaluation of the purchased product.  
+
+```{r perc-reviews, echo=FALSE, fig.pos="H", fig.cap="Number of Amazon Alexa reviews by date.",}
+
+ggplot(df) + aes(x=as.Date(review_date, "%d-%m-%y")) + 
+  geom_bar(fill="#619DFF") +
+  scale_x_date(date_labels="%d-%b", date_breaks="1 week") +
+  theme_classic() +
+  theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+  labs(x="Dates",
+       y="Count")
+
+```
+
+```{r include=FALSE}
+model_df <- df %>% 
+  count(product_variation) %>% 
+  mutate(perc=n/nrow(df))
+```
+
+The Amazon Echo models include `r nrow(model_df)` variations which differ in types and colors. Specifically, there are 6 models:
+
+ * *Echo* (2nd gen.) in Charcoal Fabric, Heather Gray Fabric, Oak Finish, Sandstone Fabric and Walnut Finish; 
+ * *Echo Dot* (2rd gen.) in black and white;
+ * *Echo Plus* (1st gen.) in black and white;
+ * *Echo Show* (1st gen.) in black and white;
+ * *Echo Spot* in black and white, and finally
+ * *Fire TV stick*.
+ 
+The first five have very similar functions, differing mainly in the presence or lack of a screen and in its size. The last product, on the other hand, allows the TV control via Alexa.
+
+As shown in Figure \@ref(fig:prod-reviews-var), presumably the most purchased products were the Black Echo Dot, the Charcoal Fabric Echo and the Fire TV stick. It can be seen that these are also the products in the Alexa line that tend to have the lowest prices.
+
+```{r prod-reviews-var, echo=FALSE, fig.pos="H", fig.cap="Percentage of Amazon Alexa reviews by product variation."}
+model_df <- df %>% 
+  count(product_variation) %>% 
+  mutate(perc =round(n/nrow(df), 2))
+
+ggplot(model_df) + aes(x=reorder(product_variation, -perc), y=perc) + 
+  geom_bar(stat="identity", fill="#619DFF") +
+  geom_text(aes(label=perc), size=3, position=position_dodge(width=0.9), vjust=-0.25) +
+  ylim(0,0.3) + 
+  theme_classic() +
+  theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+  labs(x="Product's variation",
+       y="Percentage")
+```
+
+Moreover, the Figure \@ref(fig:prod-rate-var shows that most ratings are positive for each model in each of their variation.
+
+```{r prod-rate-var, echo=FALSE, fig.pos="H", fig.cap="Ratings' percentage of Amazon Alexa reviews by product variation."}
+rating_df <- df %>% 
+  count(product_rating, product_variation) %>% 
+  mutate(perc=n/nrow(df))
+
+ggplot(rating_df) + aes(x=reorder(product_variation, -perc), y=perc, fill=product_rating) + 
+  geom_bar(stat="identity", position="fill") +
+  theme_classic() +
+  theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+  labs(x="Product's variation",
+       y="Percentage", 
+       fill="Ratings")
+```
+
+It is though decided to isolate the model from the color by renaming the levels of the model variable in order to have a clearer overview not influenced by the price that varies between each model's color.
+
+```{r Aggregate models}
+df <- df %>% mutate(product_model=recode(product_variation, "Charcoal Fabric "="Echo",
+                                "Heather Gray Fabric "="Echo", "Oak Finish "="Echo",
+                                "Sandstone Fabric "="Echo", "Walnut Finish "="Echo",
+                                "Black  Dot"="Echo Dot", "White  Dot"="Echo Dot", 
+                                "Black  Plus"="Echo Plus", "White  Plus"="Echo Plus", 
+                                "Black  Show"="Echo Show", "White  Show"="Echo Show", 
+                                "Black  Spot"="Echo Spot", "White  Spot"="Echo Spot"))
+```
+
+In Figure \@ref(fig:prod-reviews-mod) the percentage of Echo reviews is shown and curiously the models Echo Plus, Show and Spot, together with Fire TV stick have exactly the same number of reviews, which suggests that the source has included some condition in the data collection.
+
+```{r prod-reviews-mod, echo=FALSE, fig.pos="H", fig.cap="Percentage of Amazon Echo reviews by product model."}
+model_df_agg <- df %>% 
+  count(product_model) %>% 
+  mutate(perc =round(n/nrow(df), 2))
+
+ggplot(model_df_agg) + aes(x=reorder(product_model, -perc), y=perc) + 
+  geom_bar(stat="identity", fill="#619DFF") +
+  geom_text(aes(label=perc), size=3, position=position_dodge(width=0.9), vjust=-0.25) +
+  theme_classic() +
+  theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+  labs(x="Product's model",
+       y="Percentage")
+```
+
+However, as seen in Figure \@ref(fig:prod-rate-mod) the aggregated data do not show any particular differences in terms of ratings: roughly speaking, the highest ratings are proportionally the same in all models, even if Echo Spot and Dot have more ratings below 2 than the other models. Echo and Fire TV Stick, instead, are the models with more positive ratings (>3).
+
+```{r prod-rate-mod, echo=FALSE, fig.pos="H", fig.cap="Ratings' percentage of Amazon Alexa reviews by product model."}
+rating_df_mod <- df %>% 
+  count(product_rating, product_model) %>% 
+  mutate(perc=n/nrow(df))
+
+ggplot(rating_df_mod) + aes(x=reorder(product_model, -perc), y=perc, fill=product_rating) + 
+  geom_bar(stat="identity", position="fill") +
+  geom_hline(yintercept=0.884, linetype="dashed", color="black", size=0.5) +
+  theme_classic() +
+  theme(axis.text.x=element_text(angle=90, vjust=0.5, hjust=1)) +
+  labs(x="Product's model",
+       y="Percentage", 
+       fill="Ratings")
+```
+
+## Opinion mining
+    
+Opinion mining, also called sentiment analysis, on reviews has been carried out in order to answer the research questions. 
+This is a text analysis technique that uses natural language processing (NLP) to identify the sentiment behind a text. R provides many libraries to perform it, in this analysis `quantenda v3.0` has been used along with `textstem` and `tidytext`.
+
+In order to work with text data, the first step is to create a corpus from the original text. Quanteda's corpus, as reported in its documentation, is a "*library* of original documents converted to plain, UTF-8 encoded text and stored with document-level meta-data". The latters are named `docvars` and in this case are product's model and rating.
+
+```{r Corpus}
+# Create corpus
+reviews_corpus <- corpus(df$review_text, 
+                docvars=data.frame(product=df$product_model, 
+                                     rating=df$product_rating))
+```
+
+As shown in the summary above, each corpus' document is a review to which has been associated the corresponding model and rating.
+
+```{r echo=FALSE}
+summary(reviews_corpus, n=5)
+```
+
+The reviews are now ready to be tokenized to perform analyses. Tokens are the single characters contained in a sentence, including punctuation and symbols. It is worth noting that the summary above already contains the number of tokens for each document, but they need to be cleaned. Indeed, it was created a function which:
+
+ * set conditions for subsetting depending on docvars;
+ * removes punctuation, numbers, symbols and separators;
+ * removes the patterns "#34" and "." since `quanteda` was not deleting them;
+ * forces the words "alarm clock" to be together as they were treated as distinct words changing their meaning;
+ * removes stopwords using `tidytext` list, as `quanteda` also removed negations. Moreover, it was also decided to remove products' names since they do not add any specific useful information;
+ * lemmatizes the words using `textstem` list, as  `quanteda` only allows to stem words, operation which tends to lose the text's context and so not applied in this analysis.
+
+```{r}
+my_toks <- function(my_corpus, subset_prod=FALSE, sub_p="", 
+                               subset_rat=FALSE, sub_r=""){
+  # Subset conditions
+  ifelse(subset_prod, my_corpus <- my_corpus %>% corpus_subset(product %in% sub_p), my_corpus)
+  ifelse(subset_rat, my_corpus <- my_corpus %>% corpus_subset(rating %in% sub_r), my_corpus)
+  
+  # Tokens creation
+  ret <- my_corpus %>%
+    quanteda::tokens(remove_punct=TRUE, remove_numbers=TRUE,                # quanteda's tokinizer
+                  remove_symbols=TRUE, remove_separators=TRUE) %>%
+    tokens_remove(pattern=c("#34", ".")) %>%                                # remove some pattern
+    tokens_tolower() %>%                                                    # lower case conversion
+    tokens_compound(pattern=phrase("alarm clock")) %>%
+    tokens_remove(pattern=c(tidytext::stop_words$word,                      # remove stopwords
+                            "echo", "dot", "plus", "show", "spot",          # remove other words
+                            "fire", "tv" ,"stick", "firestick",
+                            "amazon", "alexa")) %>%
+    tokens_replace(pattern=lexicon::hash_lemmas$token,                      # lemmatization
+                   replacement=lexicon::hash_lemmas$lemma)
+  return(ret)}
+```
+
+The function is then applied to reviews' corpus as follows:
+
+```{r}
+reviews_toks <- my_toks(reviews_corpus) 
+```
+
+Tokens can now be converted in document-feature matrix, pivotal format for conducting analysis.
+
+```{r}
+reviews_dfm <- reviews_toks %>% dfm()
+reviews_dfm
+```
+
+In order to answer to the first research question, that is what are the Echos' products used for, a comparison wordcloud has been drawn. Figure \@ref(fig:comp-wordcloud), indeed, highlights the most frequently used words for each product's model so that it is possible to distinguish products for their usage functions.
+
+```{r comp-wordcloud, fig.pos="H", include=T, fig.cap="Comparison cloud by models."}
+cloud_dfmat <- reviews_dfm %>%
+  dfm_group(groups=product) %>%
+  dfm_trim(min_termfreq=20, verbose=FALSE) 
+
+cloud_dfmat %>%
+  textplot_wordcloud(comparison=TRUE, color=RColorBrewer::brewer.pal(8, "Dark2"))
+```
+
+It is worth noting that Echo Spot seems mainly used as a bedroom alarm clock, Echo Show seems to be useful in the kitchen as timer and to read recipes. In Echo Plus are highlighted the words "hub", "light" and "bulb", so it is probably the device used to control smart homes' devices more than the others. Echo Dot seems mainly used as speaker and the word "refurbish" states the upgrading with respect to the first generation of Dot. Fire TV stick is, as axpected, mainly used to watch movies. And, finally, Echo seems to be used mainly to listen to music.
+
+Moreover, we can visualize the network of co-occurences between words using the following function, which allows us to see the connection between the reviews' top 30 features. The words' font size changes depending on the frequency of words: the biggest appear more frequently.
+
+```{r}
+network <- function(toks){
+  fcmat <- fcm(toks, context="document", tri=FALSE)
+  feat <- names(topfeatures(fcmat, 30))
+  fcm_30 <- fcm_select(fcmat, pattern=feat)
+  textplot_network(fcm_30, min_freq=0.8, vertex_labelsize=2*(rowSums(fcm_30)/min(rowSums(fcm_30))))
+}
+```
+
+The Figure \@ref(fig:network-plot) confirms the great usage of the smart speakers to interconnect devices into the house, listening to music and set alarms. In this case the separation between models is not underlined, but it would be easy to state that the biggest terms refer refer to models for which there are more reviews.
+
+```{r network-plot, fig.pos="H", include=T, fig.cap="Network of co-occurrences between reviews' words."}
+set.seed(101)
+network(reviews_toks)
+```
+
+As mentioned above, in order to answer to the second research question, are customers concerned about privacy, opinion mining has been performed using NRC Word-Emotion Association Lexicon. The latter includes a list of English words and their associations with eight emotions: anger, fear, anticipation, trust, surprise, sadness, joy, and disgust; and two sentiments: negative and positive.
+
+To start, the dfm containing the number of words contained in each document is transformed into a dataframe, then it is compute the total number of time each word appear and transposed the dataframe. At this point the NRC lexicon has been applied to classify each word. Finally, a filter is applied to keep only sentiments and emotions useful to answer to the second research question.
+
+```{r}
+words_n_sent <- reviews_dfm %>%
+  convert(to="data.frame") %>%                           # converting dfm into dataframe
+  summarise(across(where(is.numeric), ~ sum(.x))) %>%    # sum across columns
+  t() %>%                                                # transposition
+  as.data.frame() %>%
+  rename("n"="V1") %>%
+  rownames_to_column(var="word") %>%                     # count and sorts words 
+  inner_join(get_sentiments("nrc"), by="word") %>% 
+  filter(sentiment %in% c("positive", "negative", "trust", "fear"))
+
+head(words_n_sent)
+```
+
+As emerges in Figure \@ref(fig:sent-perc) and already highlighted in exploration analysis, most of the reviews contain positive words and the 19% are trusting words. Although the analysis shows that just the 6% of words are associated to fear.
+
+```{r sent-perc, fig.pos="H", include=T, fig.cap="Sentiment of Alexa's products reviewers."}
+sent_count_df <- words_n_sent %>% 
+  group_by(sentiment) %>%
+  summarise(n=sum(n)) %>%
+  mutate(perc =round(n/sum(words_n_sent$n), 2))
+
+ggplot(sent_count_df, aes(x=sentiment, y=n)) +
+  geom_bar(stat="identity", fill="#619DFF") +
+  geom_text(aes(label=perc), size=3, position=position_dodge(width=0.9), vjust=-0.25) +
+  theme_classic() +
+  theme(legend.position="none") +
+  labs(x="Sentiments",
+       y="Scores")
+```
+
+In Figure \@ref(fig:sent-words) are shown the first 10 words associated with the selected sentiments and emotions.
+
+```{r sent-words, fig.pos="H", include=T, fig.cap="Sentiment associations with Alexa's products reviewers' words."}
+words_n_sent %>%
+  group_by(sentiment) %>%
+  slice_max(n, n=10) %>% 
+  mutate(word=reorder(word, n)) %>%
+  mutate(sentiment=factor(sentiment, levels=c("positive", "trust", # ordering output
+                                              "negative", "fear"))) %>%
+  ggplot(aes(n, word, fill=sentiment)) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~sentiment, scales="free_y") +
+  labs(x="Contribution to sentiment and to emotion",
+       y=NULL)
+```
+
+Although, some of words associated with fear are probably misclassified. For instance "alarm" is probably referred to "alarm clock" and does not denote a level of concern. The only words worth of noting is "worry" but just with this analysis it is difficult to understand its context. The other words are mainly associated to product criticism, probably left by the small number of unsatisfied customers.
+
+## Results
+
+The analysis shows that each product in the Echo line takes on a different role in the home: from a smart control hub to a simple clock, acting as a true digital assistant. Furthermore, the analysis of the reviews does not show that there are any privacy concerns, but there is probably not enough data to prove this.
+
+    
+    
+# Conclusion
+
+The tools used to conduct the analysis are very powerful and apply to different contexts and situations. The wordcloud only gives an idea of how the corpus considered is composed and, in this case, it was useful to identify the uses made of the products. Regarding the classification of general sentiment, some aspects of the analysis could be improved. In fact, some misclassifications are noticed and the synthesis that emerges from the reviews seems to be inaccurate. Sentiment analysis tools at these levels are still being developed and become more accurate as the years go by.
+For future projects it would be interesting to base similar analyses on a larger dataset, in order to be able to distinguish the most appreciated features from the most criticised ones. In addition, for a more accurate answer to the second research question, it would be necessary to base the analysis on other sources: it is unlikely that people who have a real concern about privacy are Amazon Echo customers or, if they were, have left a review on the website whenever they realized it.
+
+
+Sources
+
+ * USA Today Tech, URL [usatoday.com](https://eu.usatoday.com/story/tech/reviewedcom/2018/06/21/when-amazon-prime-day-2018/36240657/)
+ * H. Chung, M. Iorga, J. Voas and S. Lee, "Alexa, Can I Trust You?" in Computer, vol. 50, no. 9, pp. 100-104, 2017.
+ * European Commission, "The rise of Virtual Personal Assistants Digital", Transformation Monitor, 2018.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
